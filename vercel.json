@@ -1,0 +1,13 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [
+    {
+      "source": "/convexcam",
+      "destination": "https://convexcam-vercel.vercel.app/convexcam"
+    },
+    {
+      "source": "/convexcam/:path*",
+      "destination": "https://convexcam-vercel.vercel.app/convexcam/:path*"
+    }
+  ]
+}
