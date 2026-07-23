@@ -37,6 +37,12 @@ const fragmentShader = `
   uniform float u_ready;
   varying vec2 v_uv;
 
+  float convexScale(float normalizedRadius) {
+    float radius2 = normalizedRadius * normalizedRadius;
+    float radius4 = radius2 * radius2;
+    return .64 + .24 * radius2 + .12 * radius4;
+  }
+
   void main() {
     if (u_ready < .5) {
       gl_FragColor = vec4(0.0);
@@ -47,21 +53,29 @@ const fragmentShader = `
     vec2 centered = uv - .5;
     float radius = length(centered);
 
-    // Convex security-mirror projection. The center is magnified while
-    // the surrounding scene is progressively compressed toward the rim.
-    // The bounded cubic curve keeps the complete reflection readable.
+    // Aspheric convex-mirror projection. The shallow center enlarges nearby
+    // subjects, then the curve accelerates toward the rim to compress the
+    // surrounding scene without producing straight radial streaks.
     float normalizedRadius = clamp(radius * 2.0, 0.0, 1.0);
-    float sphericalScale =
-      mix(.70, 1.0, normalizedRadius * normalizedRadius);
+    float sphericalScale = convexScale(normalizedRadius);
     vec2 warped = .5 + centered * sphericalScale;
 
-    // A soft dent follows the fingertip or touch point.
-    vec2 delta = warped - u_pointer;
-    float distanceToPush = length(delta);
-    float falloff = exp(-distanceToPush * distanceToPush * 38.0);
-    float safeDistance = max(distanceToPush, .002);
-    warped -= (delta / safeDistance) * falloff * u_push * .12;
-    warped += delta * falloff * u_push * .15;
+    // Model a finger press as a continuous elastic lens. The core magnifies
+    // smoothly and a faint counter-compression ring makes the glass feel like
+    // one flexible surface instead of a digital pinch filter.
+    vec2 pointerFromCenter = u_pointer - .5;
+    float pointerRadius = clamp(length(pointerFromCenter) * 2.0, 0.0, 1.0);
+    vec2 warpedPointer =
+      .5 + pointerFromCenter * convexScale(pointerRadius);
+    vec2 displayDelta = uv - u_pointer;
+    vec2 sampleDelta = warped - warpedPointer;
+    float pressDistance2 = dot(displayDelta, displayDelta);
+    float pressCore = exp(-pressDistance2 * 48.0);
+    float pressOuter = exp(-pressDistance2 * 16.0);
+    float elasticRing = max(pressOuter - pressCore, 0.0);
+    float pressScale =
+      1.0 - u_push * (.54 * pressCore - .10 * elasticRing);
+    warped = warpedPointer + sampleDelta * pressScale;
 
     // Finger pushes can approach the rim, so keep the final sample bounded
     // inside the circular camera field instead of stretching edge pixels.
@@ -82,8 +96,9 @@ const fragmentShader = `
     cameraUv = clamp(cameraUv, .001, .999);
 
     vec3 color = texture2D(u_image, cameraUv).rgb;
-    float edgeShade = smoothstep(.3, .74, radius) * .24;
-    float highlight = smoothstep(.34, 0.0, length(uv - vec2(.35, .25))) * .1;
+    float edgeShade = smoothstep(.62, 1.0, normalizedRadius) * .19;
+    float highlight =
+      smoothstep(.34, 0.0, length(uv - vec2(.35, .25))) * .075;
     color = color * (1.0 - edgeShade) + highlight;
     color = pow(color, vec3(.94));
     gl_FragColor = vec4(color, 1.0);
