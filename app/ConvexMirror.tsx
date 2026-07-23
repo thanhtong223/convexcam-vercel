@@ -671,7 +671,7 @@ export function ConvexMirror() {
             <img
               ref={frameImageRef}
               className="mirror-frame"
-              src="/convexcam/mirror-frame.png"
+              src="/mirror-frame.png"
               alt=""
               aria-hidden="true"
             />
