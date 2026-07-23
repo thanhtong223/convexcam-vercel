@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  basePath: "/convexcam",
+  /* Hosted at the root of convexcam.thanh-tong.com. */
 };
 
 export default nextConfig;
