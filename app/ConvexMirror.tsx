@@ -37,12 +37,6 @@ const fragmentShader = `
   uniform float u_ready;
   varying vec2 v_uv;
 
-  float convexScale(float normalizedRadius) {
-    float radius2 = normalizedRadius * normalizedRadius;
-    float radius4 = radius2 * radius2;
-    return .64 + .24 * radius2 + .12 * radius4;
-  }
-
   void main() {
     if (u_ready < .5) {
       gl_FragColor = vec4(0.0);
@@ -53,29 +47,21 @@ const fragmentShader = `
     vec2 centered = uv - .5;
     float radius = length(centered);
 
-    // Aspheric convex-mirror projection. The shallow center enlarges nearby
-    // subjects, then the curve accelerates toward the rim to compress the
-    // surrounding scene without producing straight radial streaks.
+    // Convex security-mirror projection. The center is magnified while
+    // the surrounding scene is progressively compressed toward the rim.
+    // The bounded cubic curve keeps the complete reflection readable.
     float normalizedRadius = clamp(radius * 2.0, 0.0, 1.0);
-    float sphericalScale = convexScale(normalizedRadius);
+    float sphericalScale =
+      mix(.70, 1.0, normalizedRadius * normalizedRadius);
     vec2 warped = .5 + centered * sphericalScale;
 
-    // Model a finger press as a continuous elastic lens. The core magnifies
-    // smoothly and a faint counter-compression ring makes the glass feel like
-    // one flexible surface instead of a digital pinch filter.
-    vec2 pointerFromCenter = u_pointer - .5;
-    float pointerRadius = clamp(length(pointerFromCenter) * 2.0, 0.0, 1.0);
-    vec2 warpedPointer =
-      .5 + pointerFromCenter * convexScale(pointerRadius);
-    vec2 displayDelta = uv - u_pointer;
-    vec2 sampleDelta = warped - warpedPointer;
-    float pressDistance2 = dot(displayDelta, displayDelta);
-    float pressCore = exp(-pressDistance2 * 48.0);
-    float pressOuter = exp(-pressDistance2 * 16.0);
-    float elasticRing = max(pressOuter - pressCore, 0.0);
-    float pressScale =
-      1.0 - u_push * (.54 * pressCore - .10 * elasticRing);
-    warped = warpedPointer + sampleDelta * pressScale;
+    // A soft dent follows the fingertip or touch point.
+    vec2 delta = warped - u_pointer;
+    float distanceToPush = length(delta);
+    float falloff = exp(-distanceToPush * distanceToPush * 38.0);
+    float safeDistance = max(distanceToPush, .002);
+    warped -= (delta / safeDistance) * falloff * u_push * .12;
+    warped += delta * falloff * u_push * .15;
 
     // Finger pushes can approach the rim, so keep the final sample bounded
     // inside the circular camera field instead of stretching edge pixels.
@@ -96,9 +82,8 @@ const fragmentShader = `
     cameraUv = clamp(cameraUv, .001, .999);
 
     vec3 color = texture2D(u_image, cameraUv).rgb;
-    float edgeShade = smoothstep(.62, 1.0, normalizedRadius) * .19;
-    float highlight =
-      smoothstep(.34, 0.0, length(uv - vec2(.35, .25))) * .075;
+    float edgeShade = smoothstep(.3, .74, radius) * .24;
+    float highlight = smoothstep(.34, 0.0, length(uv - vec2(.35, .25))) * .1;
     color = color * (1.0 - edgeShade) + highlight;
     color = pow(color, vec3(.94));
     gl_FragColor = vec4(color, 1.0);
@@ -107,6 +92,11 @@ const fragmentShader = `
 
 function clamp(value: number, min = 0, max = 1) {
   return Math.max(min, Math.min(max, value));
+}
+
+function smoothstep(edge0: number, edge1: number, value: number) {
+  const progress = clamp((value - edge0) / (edge1 - edge0));
+  return progress * progress * (3 - 2 * progress);
 }
 
 function landmarkDistance(a: Landmark, b: Landmark) {
@@ -169,6 +159,7 @@ export function ConvexMirror() {
   const trackingFrameRef = useRef(0);
   const gestureEvidenceRef = useRef(0);
   const filteredFingerRef = useRef({ x: 0.5, y: 0.46 });
+  const filteredDepthRef = useRef(0.2);
   const pointerInsideRef = useRef(false);
   const [cameraState, setCameraState] = useState<
     "idle" | "starting" | "live" | "error"
@@ -325,6 +316,7 @@ export function ConvexMirror() {
           // Release the physical dent immediately. The evidence counter only
           // stabilizes the status label and must never hold pressure onscreen.
           targetRef.current.push = 0;
+          filteredDepthRef.current *= 0.55;
           gestureEvidenceRef.current = Math.max(
             -5,
             gestureEvidenceRef.current - 1,
@@ -361,6 +353,7 @@ export function ConvexMirror() {
         );
         if (gestureEvidenceRef.current < 2) {
           targetRef.current.push = 0;
+          filteredDepthRef.current *= 0.72;
           if (gestureEvidenceRef.current <= -2) {
             setTracking("searching");
           }
@@ -391,16 +384,60 @@ export function ConvexMirror() {
           mirrorY = (filtered.y - 0.5) / Math.max(cameraAspect, 0.01) + 0.5;
         }
 
-        const palmSize = Math.hypot(middle.x - wrist.x, middle.y - wrist.y);
-        const handProximity = clamp((palmSize - 0.075) * 4.2);
-        const fingerDepth = clamp(
-          ((pip.z - tip.z) / Math.max(palmSize, 0.06) - 0.08) * 1.35,
+        // Estimate distance from two complementary signals. Palm scale tracks
+        // the whole hand approaching the webcam. Fingertip depth and screen
+        // foreshortening track the index finger pointing into the glass.
+        const pinkyBase = hand[17];
+        const ringBase = hand[13];
+        const palmLength = Math.hypot(
+          middle.x - wrist.x,
+          middle.y - wrist.y,
         );
-        const depth = clamp(
-          0.2 + handProximity * 0.35 + fingerDepth * 0.55,
-          0.2,
+        const palmWidth = Math.hypot(
+          indexBase.x - pinkyBase.x,
+          indexBase.y - pinkyBase.y,
+        );
+        const palmScale = palmLength * 0.56 + palmWidth * 0.44;
+        const handProximity = smoothstep(0.085, 0.29, palmScale);
+
+        const palmZ =
+          (wrist.z +
+            indexBase.z +
+            middle.z +
+            ringBase.z +
+            pinkyBase.z) /
+          5;
+        const fingertipAdvance =
+          (palmZ - tip.z) / Math.max(palmScale, 0.07);
+        const depthFromLandmarks = smoothstep(
+          0.06,
+          0.62,
+          fingertipAdvance,
+        );
+
+        const projectedIndexLength = Math.hypot(
+          tip.x - indexBase.x,
+          tip.y - indexBase.y,
+        );
+        const projectedFingerRatio =
+          projectedIndexLength / Math.max(palmLength, 0.06);
+        const depthFromForeshortening =
+          1 - smoothstep(0.48, 1.18, projectedFingerRatio);
+        const fingerApproach = Math.max(
+          depthFromLandmarks,
+          depthFromForeshortening * 0.72,
+        );
+
+        const rawDepth = clamp(
+          0.1 + handProximity * 0.34 + fingerApproach * 0.72,
+          0.1,
           1,
         );
+        const depthEase =
+          rawDepth > filteredDepthRef.current ? 0.42 : 0.24;
+        filteredDepthRef.current +=
+          (rawDepth - filteredDepthRef.current) * depthEase;
+        const depth = filteredDepthRef.current;
         targetRef.current = {
           x: clamp(mirrorX),
           y: clamp(mirrorY),
