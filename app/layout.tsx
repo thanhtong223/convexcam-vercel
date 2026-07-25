@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { GoogleAnalytics } from "./GoogleAnalytics";
 
 export const metadata: Metadata = {
   title: "Convex Cam",
@@ -23,7 +24,10 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        {children}
+        <GoogleAnalytics measurementId="G-28QD45W0B7" />
+      </body>
     </html>
   );
 }

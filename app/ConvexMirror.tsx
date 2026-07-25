@@ -1,6 +1,7 @@
 "use client";
 
 import { PointerEvent, useCallback, useEffect, useRef, useState } from "react";
+import { trackEvent } from "./analytics";
 
 type Landmark = { x: number; y: number; z: number };
 type HandsResult = { multiHandLandmarks?: Landmark[][] };
@@ -514,6 +515,7 @@ export function ConvexMirror() {
         await videoRef.current.play();
       }
       setCameraState("live");
+      trackEvent("camera_enabled");
       startHandTracking();
     } catch {
       setCameraState("error");
@@ -604,6 +606,7 @@ export function ConvexMirror() {
     );
 
     setSnapshot(output.toDataURL("image/jpeg", 0.94));
+    trackEvent("photo_captured");
     setFlash(true);
     window.setTimeout(() => setFlash(false), 180);
   }, [cameraState, photoCaption]);
@@ -640,6 +643,7 @@ export function ConvexMirror() {
     anchor.href = snapshot;
     anchor.download = `convex-cam-${Date.now()}.jpg`;
     anchor.click();
+    trackEvent("photo_downloaded");
   };
 
   const trackerLabel = {
@@ -770,7 +774,12 @@ export function ConvexMirror() {
           </span>
         </div>
         <div className="legal-links" aria-label="Legal information">
-          <a href="https://inkspan.thanh-tong.com">
+          <a
+            href="https://inkspan.thanh-tong.com"
+            onClick={() =>
+              trackEvent("effect_switched", { destination: "inkspan" })
+            }
+          >
             try INKSPAN ↗
           </a>
           <button type="button" onClick={() => setLegalView("privacy")}>
@@ -831,7 +840,7 @@ export function ConvexMirror() {
                 <>
                   <div className="legal-title-row">
                     <h2 id="legal-title">Privacy</h2>
-                    <p>Last updated July 23, 2026</p>
+                    <p>Last updated July 25, 2026</p>
                   </div>
                   <section>
                     <h3>The short version</h3>
@@ -867,8 +876,12 @@ export function ConvexMirror() {
                       The web host and asset provider may receive standard
                       connection information, such as an IP address, browser
                       type, and request time, when delivering the site files.
-                      This MVP does not include advertising trackers, product
-                      analytics, or app-owned cookies.
+                      Convex Camera uses Google Analytics 4 to measure page
+                      visits and anonymous actions such as enabling the camera,
+                      capturing or saving a photo, and switching effects.
+                      Google Analytics may use cookies. Camera frames, gesture
+                      data, photo captions, and captured photos are never
+                      included in analytics events.
                     </p>
                   </section>
                   <section>
