@@ -322,7 +322,8 @@ input:focus-visible {
   gap: 14px;
 }
 
-.legal-links button {
+.legal-links button,
+.legal-links a {
   border: 0;
   border-bottom: 1px solid transparent;
   background: transparent;
@@ -330,9 +331,11 @@ input:focus-visible {
   padding: 3px 0;
   font-size: 0.65rem;
   cursor: pointer;
+  text-decoration: none;
 }
 
-.legal-links button:hover {
+.legal-links button:hover,
+.legal-links a:hover {
   border-bottom-color: var(--muted);
   color: var(--ink);
 }

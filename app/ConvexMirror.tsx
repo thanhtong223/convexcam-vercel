@@ -770,6 +770,9 @@ export function ConvexMirror() {
           </span>
         </div>
         <div className="legal-links" aria-label="Legal information">
+          <a href="https://inkspan.thanh-tong.com">
+            try INKSPAN ↗
+          </a>
           <button type="button" onClick={() => setLegalView("privacy")}>
             privacy
           </button>
