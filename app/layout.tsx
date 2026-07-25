@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { GoogleAnalytics } from "./GoogleAnalytics";
+import { Analytics } from "@vercel/analytics/next";
 
 export const metadata: Metadata = {
   title: "Convex Cam",
@@ -27,6 +28,7 @@ export default function RootLayout({
       <body>
         {children}
         <GoogleAnalytics measurementId="G-28QD45W0B7" />
+        <Analytics />
       </body>
     </html>
   );
